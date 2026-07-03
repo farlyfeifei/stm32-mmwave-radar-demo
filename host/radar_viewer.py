@@ -19,7 +19,17 @@ from typing import Deque, Dict, Iterator, List, Optional, Tuple
 
 from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer
 from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QPolygonF
-from PyQt5.QtWidgets import QApplication, QHBoxLayout, QLabel, QMainWindow, QWidget
+from PyQt5.QtWidgets import (
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 # Support both "python host/radar_viewer.py" and "python -m host.radar_viewer"
 if __package__ in (None, ""):
@@ -58,6 +68,9 @@ COLOR_ARROW = QColor("#ff79c6")
 COLOR_TRAIL = QColor("#50fa7b")
 COLOR_TEXT = QColor("#cfd8dc")
 COLOR_TEXT_DIM = QColor("#6b7785")
+COLOR_DIM = QColor("#6b7785")
+COLOR_ACCENT_2 = QColor("#ffb84f")
+COLOR_OK = QColor("#50fa7b")
 
 MAX_RANGE_M = 30.0          # outer distance ring
 RING_STEP_M = 10.0          # one ring every 10 m
@@ -390,10 +403,11 @@ class RadarViewer(QMainWindow):
         frames: Iterator[Tuple[int, List[Measurement]]],
         total_frames: Optional[int] = None,
         source_label: str = "",
+        interactive: bool = False,
     ) -> None:
         super().__init__()
         self.setWindowTitle("低空之眸 — 单雷达目标检测可视化")
-        self.resize(1180, 740)
+        self.resize(1180, 820 if interactive else 740)
 
         self._frames = frames
         self._total_frames = total_frames
@@ -401,14 +415,19 @@ class RadarViewer(QMainWindow):
         self._tracker = RadarTracker()
         self._frame_count = 0
         self._status = "等待数据…"
+        self._interactive = interactive
 
         central = QWidget()
-        layout = QHBoxLayout(central)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(8, 8, 8, 8)
+        outer.setSpacing(6)
+
+        main_row = QHBoxLayout()
+        main_row.setContentsMargins(0, 0, 0, 0)
+        main_row.setSpacing(8)
 
         self.canvas = RadarCanvas()
-        layout.addWidget(self.canvas, 1)
+        main_row.addWidget(self.canvas, 1)
 
         self.info_label = QLabel()
         self.info_label.setMinimumWidth(340)
@@ -420,13 +439,127 @@ class RadarViewer(QMainWindow):
             "padding: 10px;"
             "border-radius: 4px;"
         )
-        layout.addWidget(self.info_label, 0)
+        main_row.addWidget(self.info_label, 0)
+
+        outer.addLayout(main_row, 1)
+
+        # ----- interactive panel (bottom) -----
+        if interactive:
+            outer.addWidget(self._build_interactive_panel())
 
         self.setCentralWidget(central)
         self._render_info()
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
+        self._timer.start(TIMER_INTERVAL_MS)
+
+    # ----- interactive panel ------------------------------------------------ #
+    def _build_interactive_panel(self) -> QWidget:
+        from host.scenario_parser import EXAMPLES
+
+        panel = QFrame()
+        panel.setStyleSheet(
+            f"background-color: {COLOR_PANEL.name()};"
+            f"color: {COLOR_TEXT.name()};"
+            "border-radius: 6px;"
+            "padding: 4px;"
+        )
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(4)
+
+        # Title row
+        title = QLabel("✦ 交互式场景生成 — 用中文描述飞行状态,雷达实时响应")
+        title.setStyleSheet(f"color: {COLOR_ACCENT_2.name()}; font-size: 13px; font-weight: bold;")
+        layout.addWidget(title)
+
+        # Input row
+        input_row = QHBoxLayout()
+        self._ai_input = QLineEdit()
+        self._ai_input.setPlaceholderText("例: 两个目标从远处飞来,一个从左一个从右,强杂波")
+        self._ai_input.setStyleSheet(
+            f"background-color: {COLOR_BG.name()};"
+            f"color: {COLOR_TEXT.name()};"
+            f"border: 1px solid {COLOR_GRID.name()};"
+            "border-radius: 4px; padding: 6px 10px; font-size: 13px;"
+        )
+        self._ai_input.returnPressed.connect(self._on_interactive_submit)
+        input_row.addWidget(self._ai_input, 1)
+
+        btn = QPushButton("生成场景")
+        btn.setStyleSheet(
+            f"background-color: {COLOR_ACCENT_2.name()};"
+            "color: #2a1a00; border: none; border-radius: 4px;"
+            "padding: 6px 16px; font-size: 13px; font-weight: bold;"
+        )
+        btn.clicked.connect(self._on_interactive_submit)
+        input_row.addWidget(btn, 0)
+        layout.addLayout(input_row)
+
+        # Example chips
+        chip_row = QHBoxLayout()
+        chip_label = QLabel("示例:")
+        chip_label.setStyleSheet(f"color: {COLOR_DIM.name()}; font-size: 11px;")
+        chip_row.addWidget(chip_label, 0)
+        self._example_buttons = []
+        for ex in EXAMPLES:
+            chip = QPushButton(ex)
+            chip.setStyleSheet(
+                f"background-color: rgba(79,209,255,0.08);"
+                f"color: {COLOR_DIM.name()};"
+                f"border: 1px solid {COLOR_GRID.name()};"
+                "border-radius: 10px; padding: 2px 8px; font-size: 11px;"
+            )
+            chip.clicked.connect(lambda checked, text=ex: self._load_example(text))
+            self._example_buttons.append(chip)
+            chip_row.addWidget(chip, 0)
+        chip_row.addStretch()
+        layout.addLayout(chip_row)
+
+        # Parse report
+        self._ai_report = QLabel("")
+        self._ai_report.setStyleSheet(
+            f"color: {COLOR_OK.name()};"
+            f"background-color: rgba(0,0,0,0.3);"
+            "border-radius: 4px; padding: 4px 8px; font-size: 11px;"
+            "font-family: Consolas, monospace;"
+        )
+        self._ai_report.setTextFormat(Qt.RichText)
+        layout.addWidget(self._ai_report)
+
+        return panel
+
+    def _load_example(self, text: str) -> None:
+        """Fill the input with an example and immediately run it."""
+        self._ai_input.setText(text)
+        self._on_interactive_submit()
+
+    def _on_interactive_submit(self) -> None:
+        """Parse the text, build a new scenario, restart simulation."""
+        from host.scenario_parser import parse_flight_description, explain
+        from host.radar_demo import generate_from_config
+
+        text = self._ai_input.text().strip()
+        if not text:
+            return
+
+        cfg = parse_flight_description(text)
+        report = explain(cfg)
+        self._ai_report.setText(report.replace("\n", "<br>"))
+
+        # Stop current timer, reset state
+        self._timer.stop()
+        self._tracker = RadarTracker()
+        self._frame_count = 0
+        self.canvas._trails.clear()
+
+        # New frame generator from parsed config
+        self._frames = generate_from_config(cfg)
+        self._total_frames = cfg.frame_count
+        self._source_label = f"交互: {text[:30]}"
+        self._status = "场景已加载"
+
         self._timer.start(TIMER_INTERVAL_MS)
 
     # ----- timer callback --------------------------------------------------- #
@@ -538,6 +671,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="replay a measurement CSV (produced by radar_demo.py --csv)",
     )
+    mode.add_argument(
+        "--interactive",
+        action="store_true",
+        help="interactive mode: type Chinese flight descriptions to generate scenarios",
+    )
     parser.add_argument(
         "--frames",
         type=int,
@@ -550,8 +688,19 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
 
-    if args.simulate:
-        frames: Iterator[Tuple[int, List[Measurement]]] = generate_scenario(args.frames)
+    interactive = False
+
+    if args.interactive:
+        interactive = True
+        from host.scenario_parser import parse_flight_description
+        from host.radar_demo import generate_from_config
+        # Start with a default scenario; user will type new ones in the UI
+        cfg = parse_flight_description("单目标匀速接近,中等杂波")
+        frames: Iterator[Tuple[int, List[Measurement]]] = generate_from_config(cfg)
+        total = cfg.frame_count
+        source = "交互模式 (输入描述后自动生成)"
+    elif args.simulate:
+        frames = generate_scenario(args.frames)
         total = args.frames
         source = f"simulate ({args.frames} 帧)"
     elif args.scenario:
@@ -566,7 +715,7 @@ def main() -> None:
         source = f"replay {args.replay.name}"
 
     app = QApplication(sys.argv)
-    viewer = RadarViewer(frames, total_frames=total, source_label=source)
+    viewer = RadarViewer(frames, total_frames=total, source_label=source, interactive=interactive)
     viewer.show()
     sys.exit(app.exec_())
 

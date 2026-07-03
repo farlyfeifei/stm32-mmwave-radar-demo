@@ -362,6 +362,11 @@ def generate_scenario_from_config(path: Path) -> Iterator[tuple[int, list[Measur
     }
     """
     cfg = ScenarioConfig.from_json(path)
+    yield from generate_from_config(cfg)
+
+
+def generate_from_config(cfg: ScenarioConfig) -> Iterator[tuple[int, list[Measurement]]]:
+    """Generate radar measurements from a ScenarioConfig object."""
     for seq in range(cfg.frame_count):
         rng = random.Random(2026 + seq)
         time_s = seq * cfg.frame_interval_s
