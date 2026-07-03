@@ -1,0 +1,25 @@
+{
+  "name": "强杂波环境",
+  "description": "单个真实目标在密集杂波中穿行, 杂波每 4 帧出现一次, 测试 SNR 门限和航迹抗扰",
+  "frame_count": 200,
+  "frame_interval_s": 0.08,
+  "targets": [
+    {
+      "range_start_m": 16.0,
+      "velocity_mps": -0.30,
+      "angle_start_deg": -5.0,
+      "angle_rate_dps": 0.6,
+      "snr_db": 16.0,
+      "start_frame": 0,
+      "dropout_every": 19,
+      "noise": {"range": 0.10, "velocity": 0.05, "angle": 0.4, "snr": 1.5}
+    }
+  ],
+  "clutter": {
+    "every": 4,
+    "range": [1.0, 45.0],
+    "velocity": [-3.0, 3.0],
+    "angle": [-40.0, 40.0],
+    "snr": [4.0, 9.0]
+  }
+}

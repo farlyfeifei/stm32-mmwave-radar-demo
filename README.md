@@ -19,14 +19,20 @@ An original portfolio demo for a single-radar low-altitude target detection work
 │   └── radar_demo.c          # Portable C parser + target tracker + STM32 integration notes
 ├── host/
 │   ├── __init__.py
-│   ├── radar_demo.py         # Simulator, parser, tracker, CSV replay, ASCII display
+│   ├── radar_demo.py         # Simulator, parser, tracker, CSV replay, ASCII display, scenario engine
 │   └── radar_viewer.py       # PyQt5 real-time 2D PPI visualization upper-computer
 ├── data/
 │   └── sample_capture.csv    # Example generated capture
+├── scenarios/                # JSON-driven custom simulation scenarios
+│   ├── crossing.json
+│   ├── formation.json
+│   ├── evasive.json
+│   └── clutter_storm.json
 ├── docs/
 │   ├── algorithm.md
 │   ├── portfolio_notes.md
-│   └── protocol.md
+│   ├── protocol.md
+│   └── scenarios.md          # Custom scenario configuration guide
 └── tests/
     └── test_radar_demo.py
 ```
@@ -77,6 +83,49 @@ python .\host\radar_viewer.py --replay .\data\sample_capture.csv
 - 深色背景 `#0a0f14`,科技感配色(青色 `#4fd1ff` 网格,绿色 `#50fa7b` 稳定目标)。
 
 > 无显示环境(如 CI/远程)可设置 `QT_QPA_PLATFORM=offscreen` 以确认能无报错启动。
+
+### 自定义模拟场景 (JSON)
+
+除了 `--simulate` 的固定场景,还可以用 JSON 描述自定义场景:目标数量、轨迹、速度、SNR、漏检率、杂波密度全可配。
+
+预设场景(见 `scenarios/`):
+
+| 场景 | 目标数 | 杂波 | 测试点 |
+|------|--------|------|--------|
+| `crossing.json` | 2 | 中 | 交叉轨迹下最近邻关联能否保持 ID |
+| `formation.json` | 3 | 轻 | 密集编队下航迹分离能力 |
+| `evasive.json` | 1 | 无 | 机动目标跟踪响应 |
+| `clutter_storm.json` | 1 | 重(每4帧) | SNR 门限 + 航迹抗扰 |
+
+```powershell
+# ASCII 模式
+python .\host\radar_demo.py --scenario .\scenarios\formation.json --ascii-map
+
+# PyQt 可视化
+python .\host\radar_viewer.py --scenario .\scenarios\crossing.json
+```
+
+自定义场景示例(完整字段见 [docs/scenarios.md](docs/scenarios.md)):
+
+```json
+{
+  "name": "我的场景",
+  "frame_count": 200,
+  "frame_interval_s": 0.08,
+  "targets": [
+    {
+      "range_start_m": 18.0,
+      "velocity_mps": -0.55,
+      "angle_start_deg": -11.0,
+      "angle_rate_dps": 1.125,
+      "snr_db": 17.0,
+      "dropout_every": 17,
+      "noise": {"range": 0.08, "velocity": 0.04, "angle": 0.3, "snr": 1.2}
+    }
+  ],
+  "clutter": {"every": 9, "range": [2.0, 50.0], "snr": [3.0, 7.0]}
+}
+```
 
 Run the Python tests:
 

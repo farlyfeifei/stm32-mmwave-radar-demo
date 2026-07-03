@@ -243,6 +243,157 @@ def generate_scenario(frame_count: int) -> Iterator[tuple[int, list[Measurement]
         yield seq, measurements[:MAX_TARGETS]
 
 
+# --------------------------------------------------------------------------- #
+# Custom scenario configuration (JSON-driven simulation)
+# --------------------------------------------------------------------------- #
+import json
+
+
+@dataclass
+class TargetSpec:
+    """One moving target in a scenario file."""
+    range_start_m: float
+    velocity_mps: float
+    angle_start_deg: float
+    angle_rate_dps: float = 0.0
+    snr_db: float = 15.0
+    start_frame: int = 0
+    dropout_every: int = 0
+    noise_range: float = 0.08
+    noise_velocity: float = 0.04
+    noise_angle: float = 0.3
+    noise_snr: float = 1.0
+
+
+@dataclass
+class ClutterSpec:
+    """Random clutter (false alarms) injected periodically."""
+    every: int = 0
+    range_min: float = 2.0
+    range_max: float = 50.0
+    velocity_min: float = -2.0
+    velocity_max: float = 2.0
+    angle_min: float = -35.0
+    angle_max: float = 35.0
+    snr_min: float = 3.0
+    snr_max: float = 7.0
+
+
+@dataclass
+class ScenarioConfig:
+    """Full scenario configuration loaded from JSON."""
+    name: str
+    description: str
+    frame_count: int
+    frame_interval_s: float
+    targets: list[TargetSpec]
+    clutter: ClutterSpec
+
+    @classmethod
+    def from_json(cls, path: Path) -> "ScenarioConfig":
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        targets = [
+            TargetSpec(
+                range_start_m=t["range_start_m"],
+                velocity_mps=t["velocity_mps"],
+                angle_start_deg=t.get("angle_start_deg", 0.0),
+                angle_rate_dps=t.get("angle_rate_dps", 0.0),
+                snr_db=t.get("snr_db", 15.0),
+                start_frame=t.get("start_frame", 0),
+                dropout_every=t.get("dropout_every", 0),
+                noise_range=t.get("noise", {}).get("range", 0.08),
+                noise_velocity=t.get("noise", {}).get("velocity", 0.04),
+                noise_angle=t.get("noise", {}).get("angle", 0.3),
+                noise_snr=t.get("noise", {}).get("snr", 1.0),
+            )
+            for t in data.get("targets", [])
+        ]
+        cl = data.get("clutter", {})
+        clutter = ClutterSpec(
+            every=cl.get("every", 0),
+            range_min=cl.get("range", [2.0, 50.0])[0],
+            range_max=cl.get("range", [2.0, 50.0])[1],
+            velocity_min=cl.get("velocity", [-2.0, 2.0])[0],
+            velocity_max=cl.get("velocity", [-2.0, 2.0])[1],
+            angle_min=cl.get("angle", [-35.0, 35.0])[0],
+            angle_max=cl.get("angle", [-35.0, 35.0])[1],
+            snr_min=cl.get("snr", [3.0, 7.0])[0],
+            snr_max=cl.get("snr", [3.0, 7.0])[1],
+        )
+        return cls(
+            name=data.get("name", path.stem),
+            description=data.get("description", ""),
+            frame_count=data.get("frame_count", 120),
+            frame_interval_s=data.get("frame_interval_s", 0.08),
+            targets=targets,
+            clutter=clutter,
+        )
+
+
+def generate_scenario_from_config(path: Path) -> Iterator[tuple[int, list[Measurement]]]:
+    """Generate radar measurements from a JSON scenario file.
+
+    Scenario JSON schema (see scenarios/*.json for examples):
+    {
+      "name": "...",
+      "description": "...",
+      "frame_count": 200,
+      "frame_interval_s": 0.08,
+      "targets": [
+        {
+          "range_start_m": 18.0,
+          "velocity_mps": -0.55,
+          "angle_start_deg": -11.0,
+          "angle_rate_dps": 1.125,
+          "snr_db": 17.0,
+          "start_frame": 0,
+          "dropout_every": 17,
+          "noise": {"range": 0.08, "velocity": 0.04, "angle": 0.3, "snr": 1.2}
+        }
+      ],
+      "clutter": {
+        "every": 9,
+        "range": [2.0, 50.0],
+        "velocity": [-2.0, 2.0],
+        "angle": [-35.0, 35.0],
+        "snr": [3.0, 7.0]
+      }
+    }
+    """
+    cfg = ScenarioConfig.from_json(path)
+    for seq in range(cfg.frame_count):
+        rng = random.Random(2026 + seq)
+        time_s = seq * cfg.frame_interval_s
+        measurements: list[Measurement] = []
+
+        for t in cfg.targets:
+            if seq < t.start_frame:
+                continue
+            if t.dropout_every and seq % t.dropout_every == 0:
+                continue  # simulated missed detection
+            measurements.append(
+                Measurement(
+                    range_m=t.range_start_m + t.velocity_mps * time_s + rng.uniform(-t.noise_range, t.noise_range),
+                    velocity_mps=t.velocity_mps + rng.uniform(-t.noise_velocity, t.noise_velocity),
+                    angle_deg=t.angle_start_deg + t.angle_rate_dps * time_s + rng.uniform(-t.noise_angle, t.noise_angle),
+                    snr_db=t.snr_db + rng.uniform(-t.noise_snr, t.noise_snr),
+                )
+            )
+
+        if cfg.clutter.every and seq % cfg.clutter.every == 0:
+            measurements.append(
+                Measurement(
+                    range_m=rng.uniform(cfg.clutter.range_min, cfg.clutter.range_max),
+                    velocity_mps=rng.uniform(cfg.clutter.velocity_min, cfg.clutter.velocity_max),
+                    angle_deg=rng.uniform(cfg.clutter.angle_min, cfg.clutter.angle_max),
+                    snr_db=rng.uniform(cfg.clutter.snr_min, cfg.clutter.snr_max),
+                )
+            )
+
+        yield seq, measurements[:MAX_TARGETS]
+
+
 def write_csv(path: Path, rows: Iterable[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = ["seq", "kind", "id", "range_m", "velocity_mps", "angle_deg", "snr_db"]
@@ -337,8 +488,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="STM32 mmWave radar target detection demo")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--simulate", action="store_true", help="generate deterministic radar measurements")
+    mode.add_argument("--scenario", type=Path, help="generate measurements from a JSON scenario file")
     mode.add_argument("--replay", type=Path, help="replay a measurement CSV")
-    parser.add_argument("--frames", type=int, default=80, help="number of simulated frames")
+    parser.add_argument("--frames", type=int, default=80, help="number of simulated frames (only used with --simulate)")
     parser.add_argument("--csv", type=Path, help="optional CSV output path")
     parser.add_argument("--ascii-map", action="store_true", help="print a compact angle/range display")
     return parser
@@ -348,6 +500,8 @@ def main() -> None:
     args = build_parser().parse_args()
     if args.simulate:
         run_frames(generate_scenario(args.frames), args.csv, args.ascii_map)
+    elif args.scenario:
+        run_frames(generate_scenario_from_config(args.scenario), args.csv, args.ascii_map)
     else:
         run_frames(read_measurements_csv(args.replay), args.csv, args.ascii_map)
 

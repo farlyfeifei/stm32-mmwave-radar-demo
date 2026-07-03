@@ -21,13 +21,27 @@ from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer
 from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QPolygonF
 from PyQt5.QtWidgets import QApplication, QHBoxLayout, QLabel, QMainWindow, QWidget
 
-from host.radar_demo import (
-    Measurement,
-    RadarTracker,
-    Track,
-    generate_scenario,
-    read_measurements_csv,
-)
+# Support both "python host/radar_viewer.py" and "python -m host.radar_viewer"
+if __package__ in (None, ""):
+    # Running as a script: add project root so "host" package is importable
+    _project_root = str(Path(__file__).resolve().parent.parent)
+    if _project_root not in sys.path:
+        sys.path.insert(0, _project_root)
+    from host.radar_demo import (
+        Measurement,
+        RadarTracker,
+        Track,
+        generate_scenario,
+        read_measurements_csv,
+    )
+else:
+    from host.radar_demo import (
+        Measurement,
+        RadarTracker,
+        Track,
+        generate_scenario,
+        read_measurements_csv,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -515,6 +529,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="generate deterministic radar measurements via generate_scenario",
     )
     mode.add_argument(
+        "--scenario",
+        type=Path,
+        help="generate measurements from a JSON scenario file (see scenarios/)",
+    )
+    mode.add_argument(
         "--replay",
         type=Path,
         help="replay a measurement CSV (produced by radar_demo.py --csv)",
@@ -535,6 +554,12 @@ def main() -> None:
         frames: Iterator[Tuple[int, List[Measurement]]] = generate_scenario(args.frames)
         total = args.frames
         source = f"simulate ({args.frames} 帧)"
+    elif args.scenario:
+        from host.radar_demo import ScenarioConfig, generate_scenario_from_config
+        cfg = ScenarioConfig.from_json(args.scenario)
+        frames = generate_scenario_from_config(args.scenario)
+        total = cfg.frame_count
+        source = f"scenario: {cfg.name}"
     else:
         frames = read_measurements_csv(args.replay)
         total = None

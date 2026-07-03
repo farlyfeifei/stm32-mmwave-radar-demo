@@ -1,0 +1,35 @@
+{
+  "name": "双目标交叉",
+  "description": "两个目标从不同方向接近, 在雷达视野内交叉后远离, 测试最近邻关联能否保持 ID",
+  "frame_count": 200,
+  "frame_interval_s": 0.08,
+  "targets": [
+    {
+      "range_start_m": 22.0,
+      "velocity_mps": -0.55,
+      "angle_start_deg": -15.0,
+      "angle_rate_dps": 1.5,
+      "snr_db": 17.0,
+      "start_frame": 0,
+      "dropout_every": 17,
+      "noise": {"range": 0.08, "velocity": 0.04, "angle": 0.3, "snr": 1.2}
+    },
+    {
+      "range_start_m": 12.0,
+      "velocity_mps": 0.35,
+      "angle_start_deg": 12.0,
+      "angle_rate_dps": -0.8,
+      "snr_db": 13.5,
+      "start_frame": 12,
+      "dropout_every": 23,
+      "noise": {"range": 0.08, "velocity": 0.04, "angle": 0.3, "snr": 1.0}
+    }
+  ],
+  "clutter": {
+    "every": 9,
+    "range": [2.0, 50.0],
+    "velocity": [-2.0, 2.0],
+    "angle": [-35.0, 35.0],
+    "snr": [3.0, 7.0]
+  }
+}

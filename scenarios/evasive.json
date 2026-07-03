@@ -1,0 +1,21 @@
+{
+  "name": "急转弯规避",
+  "description": "单个目标匀速接近后突然转弯, 角度快速变化, 测试跟踪器对机动目标的响应",
+  "frame_count": 160,
+  "frame_interval_s": 0.08,
+  "targets": [
+    {
+      "range_start_m": 20.0,
+      "velocity_mps": -0.50,
+      "angle_start_deg": 0.0,
+      "angle_rate_dps": 0.0,
+      "snr_db": 19.0,
+      "start_frame": 0,
+      "dropout_every": 0,
+      "noise": {"range": 0.05, "velocity": 0.03, "angle": 0.2, "snr": 0.8}
+    }
+  ],
+  "clutter": {
+    "every": 0
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "三目标编队",
+  "description": "三个目标同向同速编队飞行, 间距恒定, 测试航迹分离与 ID 保持能力",
+  "frame_count": 180,
+  "frame_interval_s": 0.08,
+  "targets": [
+    {
+      "range_start_m": 25.0,
+      "velocity_mps": -0.40,
+      "angle_start_deg": -8.0,
+      "angle_rate_dps": 0.3,
+      "snr_db": 18.0,
+      "start_frame": 0,
+      "dropout_every": 0,
+      "noise": {"range": 0.06, "velocity": 0.03, "angle": 0.2, "snr": 0.8}
+    },
+    {
+      "range_start_m": 24.0,
+      "velocity_mps": -0.40,
+      "angle_start_deg": 0.0,
+      "angle_rate_dps": 0.3,
+      "snr_db": 16.0,
+      "start_frame": 0,
+      "dropout_every": 0,
+      "noise": {"range": 0.06, "velocity": 0.03, "angle": 0.2, "snr": 0.8}
+    },
+    {
+      "range_start_m": 26.0,
+      "velocity_mps": -0.40,
+      "angle_start_deg": 8.0,
+      "angle_rate_dps": 0.3,
+      "snr_db": 15.0,
+      "start_frame": 0,
+      "dropout_every": 31,
+      "noise": {"range": 0.06, "velocity": 0.03, "angle": 0.2, "snr": 0.8}
+    }
+  ],
+  "clutter": {
+    "every": 12,
+    "range": [3.0, 45.0],
+    "velocity": [-1.5, 1.5],
+    "angle": [-30.0, 30.0],
+    "snr": [3.0, 6.0]
+  }
+}
